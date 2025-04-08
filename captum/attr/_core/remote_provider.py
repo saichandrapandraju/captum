@@ -53,6 +53,7 @@ class VLLMProvider(RemoteLLMProvider):
         self.client = OpenAI(base_url=self.api_url,
                              api_key=os.getenv("OPENAI_API_KEY", "EMPTY")
                             )
+        self.model_name = self.client.models.list().data[0].id
         
 
     def generate(self, prompt: str, **gen_args: Any) -> str:
@@ -60,7 +61,7 @@ class VLLMProvider(RemoteLLMProvider):
             gen_args['max_tokens'] = gen_args.pop('max_new_tokens', 25)
 
         response = self.client.completions.create(
-            model=self.tokenizer.name_or_path,
+            model=self.model_name,
             prompt=prompt,
             **gen_args
         )
@@ -69,14 +70,14 @@ class VLLMProvider(RemoteLLMProvider):
     
     def get_logprobs(self, prompt: str) -> List[float]:
         response = self.client.completions.create(
-            model=self.tokenizer.name_or_path,
+            model=self.model_name,
             prompt=prompt,
             temperature=0.0,
             max_tokens=1,
             extra_body={"prompt_logprobs": 0}
         )
         prompt_logprobs = []
-        for probs in response.choices[0]['prompt_logprobs']:
+        for probs in response.choices[0].prompt_logprobs[1:]:
             prompt_logprobs.append(list(probs.values())[0]['logprob'])
         
         return prompt_logprobs

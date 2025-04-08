@@ -920,10 +920,6 @@ class RemoteLLMAttribution(LLMAttribution):
         )
         
         self.provider = provider
-        # placeholder (dummy) model to satisfy the BaseLLMAttribution requirements
-        self.model = nn.Module()
-
-        self.device = torch.device("cpu")
         self.attr_method.forward_func = self._remote_forward_func
 
     def _get_target_tokens(
@@ -983,7 +979,7 @@ class RemoteLLMAttribution(LLMAttribution):
         init_model_inp = perturbed_input
         moodel_inp = init_model_inp
         
-        log_prob_list = List[Tensor] = []
+        log_prob_list: List[Tensor] = []
         target_str:str = self.tokenizer.decode(target_tokens)
         
         all_token_probs = self.provider.get_logprobs(moodel_inp + target_str)
