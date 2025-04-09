@@ -5,9 +5,8 @@ from openai import OpenAI
 import os
 
 class RemoteLLMProvider(ABC):
-    """All remote LLM providers like vLLM extends this class that offer logprob APIs."""
+    """All remote LLM providers that offer logprob via API (like vLLM) extends this class ."""
     
-    tokenizer: TokenizerLike
     api_url: str
     
     @abstractmethod
@@ -45,11 +44,10 @@ class RemoteLLMProvider(ABC):
         ...
 
 class VLLMProvider(RemoteLLMProvider):
-    def __init__(self, api_url: str, tokenizer: TokenizerLike):
+    def __init__(self, api_url: str):
         assert api_url.strip() != "", "API URL is required"
         
         self.api_url = api_url
-        self.tokenizer = tokenizer
         self.client = OpenAI(base_url=self.api_url,
                              api_key=os.getenv("OPENAI_API_KEY", "EMPTY")
                             )

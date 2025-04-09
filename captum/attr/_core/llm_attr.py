@@ -902,12 +902,14 @@ class RemoteLLMAttribution(LLMAttribution):
     def __init__(
         self,
         attr_method: PerturbationAttribution,
+        tokenizer: TokenizerLike,
         provider: RemoteLLMProvider,
         attr_target: str = "log_prob",
     ) -> None:
         """
         Args:
             attr_method: Instance of a supported perturbation attribution class
+            tokenizer (Tokenizer): tokenizer of the llm model used in the attr_method
             provider: Remote LLM provider that implements the RemoteLLMProvider protocol
             attr_target: attribute towards log probability or probability.
                     Available values ["log_prob", "prob"]
@@ -915,7 +917,7 @@ class RemoteLLMAttribution(LLMAttribution):
         """
         super().__init__(
             attr_method=attr_method,
-            tokenizer=provider.tokenizer,
+            tokenizer=tokenizer,
             attr_target=attr_target,
         )
         
@@ -976,16 +978,28 @@ class RemoteLLMAttribution(LLMAttribution):
         """
 
         perturbed_input = self._format_model_input(inp.to_model_input(perturbed_tensor))
-        init_model_inp = perturbed_input
-        moodel_inp = init_model_inp
+        input_tokens = self.tokenizer.encode(perturbed_input, add_special_tokens=False)
+        input_tokens_len = len(input_tokens)
+        expected_tokens_len = input_tokens_len + target_tokens.size()[0]
         
         log_prob_list: List[Tensor] = []
         target_str:str = self.tokenizer.decode(target_tokens)
         
-        all_token_probs = self.provider.get_logprobs(moodel_inp + target_str)
+        all_token_probs = self.provider.get_logprobs(perturbed_input + target_str)
         
-        for target_token_prob in all_token_probs[-target_tokens.size()[0]:]:
-            log_prob_list.append(torch.tensor(target_token_prob))
+        assert len(all_token_probs) == expected_tokens_len, (
+            f"Number of logprobs from provider ({len(all_token_probs)}) "
+            f"does not match expected length ({expected_tokens_len})"
+        )
+        
+        target_token_probs = all_token_probs[-target_tokens.size()[0]:]
+        assert len(target_token_probs) == target_tokens.size()[0], (
+            f"Number of target token probs ({len(target_token_probs)}) from remote provider "
+            f"does not match target tokens length ({target_tokens.size()[0]})"
+        )
+        
+        for token_prob in target_token_probs:
+            log_prob_list.append(torch.tensor(token_prob))
         
         total_log_prob = torch.sum(torch.stack(log_prob_list), dim=0)
         # 1st element is the total prob, rest are the target tokens
@@ -999,7 +1013,7 @@ class RemoteLLMAttribution(LLMAttribution):
         target_probs = torch.exp(target_log_probs)
 
         if _inspect_forward:
-            prompt = init_model_inp
+            prompt = perturbed_input
             response = self.tokenizer.decode(target_tokens)
 
             # callback for externals to inspect (prompt, response, seq_prob)
