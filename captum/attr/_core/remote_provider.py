@@ -59,6 +59,8 @@ class VLLMProvider(RemoteLLMProvider):
     def generate(self, prompt: str, **gen_args: Any) -> str:
         if not 'max_tokens' in gen_args:
             gen_args['max_tokens'] = gen_args.pop('max_new_tokens', 25)
+        if 'do_sample' in gen_args:
+            gen_args.pop('do_sample')
 
         response = self.client.completions.create(
             model=self.model_name,
