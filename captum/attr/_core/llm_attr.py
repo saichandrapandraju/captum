@@ -962,7 +962,7 @@ class RemoteLLMAttribution(LLMAttribution):
         """
         # return str input
         if isinstance(model_input, Tensor):
-            return self.tokenizer.batch_decode(model_input, skip_special_tokens=True)[0]
+            return self.tokenizer.decode(model_input.flatten())
         return model_input
             
     def _remote_forward_func(
@@ -978,28 +978,17 @@ class RemoteLLMAttribution(LLMAttribution):
         """
 
         perturbed_input = self._format_model_input(inp.to_model_input(perturbed_tensor))
-        input_tokens = self.tokenizer.encode(perturbed_input, add_special_tokens=False)
-        input_tokens_len = len(input_tokens)
-        expected_tokens_len = input_tokens_len + target_tokens.size()[0]
         
-        log_prob_list: List[Tensor] = []
         target_str:str = self.tokenizer.decode(target_tokens)
         
-        all_token_probs = self.provider.get_logprobs(perturbed_input + target_str)
+        target_token_probs = self.provider.get_logprobs(input_prompt=perturbed_input, target_str=target_str, tokenizer=self.tokenizer)
         
-        assert len(all_token_probs) == expected_tokens_len, (
-            f"Number of logprobs from provider ({len(all_token_probs)}) "
-            f"does not match expected length ({expected_tokens_len})"
-        )
-        
-        target_token_probs = all_token_probs[-target_tokens.size()[0]:]
         assert len(target_token_probs) == target_tokens.size()[0], (
-            f"Number of target token probs ({len(target_token_probs)}) from remote provider "
-            f"does not match target tokens length ({target_tokens.size()[0]})"
+            f"Number of token logprobs from provider ({len(target_token_probs)}) "
+            f"does not match expected target token length ({target_tokens.size()[0]})"
         )
         
-        for token_prob in target_token_probs:
-            log_prob_list.append(torch.tensor(token_prob))
+        log_prob_list: List[Tensor] = list(map(torch.tensor, target_token_probs))
         
         total_log_prob = torch.sum(torch.stack(log_prob_list), dim=0)
         # 1st element is the total prob, rest are the target tokens

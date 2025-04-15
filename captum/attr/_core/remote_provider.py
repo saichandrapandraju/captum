@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, List, Optional
 from captum._utils.typing import TokenizerLike
 from openai import OpenAI
 import os
@@ -30,16 +30,20 @@ class RemoteLLMProvider(ABC):
     @abstractmethod
     def get_logprobs(
         self, 
-        prompt: str
+        input_prompt: str,
+        target_str: str,
+        tokenizer: Optional[TokenizerLike] = None
     ) -> List[float]:
         """
-        Gets log probabilities for all tokens in a given prompt.
+        Get the log probabilities for all tokens in the target string.
         
         Args:
-            prompt: The input prompt
+            input_prompt: The input prompt
+            target_str: The target string
+            tokenizer: The tokenizer to use
             
         Returns:
-            A list of log probabilities corresponding to each token in the prompt
+            A list of log probabilities corresponding to each token in the target prompt
         """
         ...
 
@@ -68,7 +72,13 @@ class VLLMProvider(RemoteLLMProvider):
         
         return response.choices[0].text
     
-    def get_logprobs(self, prompt: str) -> List[float]:
+    def get_logprobs(self, input_prompt: str, target_str: str, tokenizer: Optional[TokenizerLike] = None) -> List[float]:
+        assert tokenizer is not None, "Tokenizer is required for VLLM provider"
+        
+        num_target_str_tokens = len(tokenizer.encode(target_str, add_special_tokens=False))
+        
+        prompt = input_prompt + target_str
+        
         response = self.client.completions.create(
             model=self.model_name,
             prompt=prompt,
@@ -80,5 +90,5 @@ class VLLMProvider(RemoteLLMProvider):
         for probs in response.choices[0].prompt_logprobs[1:]:
             prompt_logprobs.append(list(probs.values())[0]['logprob'])
         
-        return prompt_logprobs
+        return prompt_logprobs[-num_target_str_tokens:]
         
